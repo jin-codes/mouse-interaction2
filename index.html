@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>고급 마우스 인터랙션 5종</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{--bg:#06070f;--accent:#a78bfa;--accent2:#2dd4bf;--accent3:#f472b6;--text:#f1f5f9;--muted:#6b7280;}
+body{font-family:'Segoe UI','Apple SD Gothic Neo',sans-serif;background:var(--bg);color:var(--text);}
+.tag{display:inline-block;font-size:11px;letter-spacing:3px;color:var(--accent2);
+  background:rgba(45,212,191,.08);padding:6px 16px;border-radius:20px;margin-bottom:16px;
+  border:1px solid rgba(45,212,191,.25);text-transform:uppercase;}
+h1{font-size:clamp(30px,6vw,58px);line-height:1.1;margin-bottom:14px;font-weight:800;}
+h2{font-size:clamp(24px,4vw,42px);font-weight:800;margin-bottom:12px;}
+p.lead{color:var(--muted);font-size:16px;line-height:1.7;max-width:520px;margin:0 auto;}
+section{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:60px 24px;position:relative;overflow:hidden;border-bottom:1px solid #14162a;}
+.num-badge{position:absolute;top:24px;left:24px;font-size:12px;letter-spacing:1px;color:var(--accent);
+  border:1px solid rgba(167,139,250,.3);padding:5px 14px;border-radius:20px;background:rgba(6,7,15,.7);z-index:20;}
+.content{position:relative;z-index:10;pointer-events:none;}
+canvas{position:absolute;inset:0;z-index:1;}
+.intro{background:radial-gradient(ellipse at 50% 40%,#180f3a,var(--bg) 70%);}
+.hint{margin-top:30px;font-size:13px;letter-spacing:2px;color:var(--muted);animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:.3}50%{opacity:1}}
+
+/* ⑫ Distortion lens overlay */
+#lensSec{background:#0a0b18;}
+#lensCanvas{z-index:1;}
+#lens-src{position:absolute;inset:0;z-index:0;opacity:0;pointer-events:none;}
+
+/* ⑮ Gooey / metaball */
+#gooeySec{background:#0a0b18;}
+#gooeyCanvas{z-index:1;}
+
+footer{text-align:center;padding:60px 24px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<section class="intro">
+  <span class="tag">Advanced Mouse · Chapter 2</span>
+  <h1>더 깊고, 더 물리적으로 🌊</h1>
+  <p class="lead">유체 · 굴절 렌즈 · 탄성 격자 · 반발 텍스트 · 메타볼.<br>마우스를 격렬하게 움직여보세요.</p>
+  <div class="hint">↓ MOVE YOUR MOUSE</div>
+</section>
+
+<!-- ⑪ FLUID TRAIL -->
+<section id="fluidSec">
+  <span class="num-badge">⑪ Fluid Trail Simulation</span>
+  <canvas id="fluidCanvas"></canvas>
+  <div class="content">
+    <span class="tag">Velocity Field</span>
+    <h2>유체를 가르며 지나가세요</h2>
+    <p class="lead">마우스 속도가 컬러 유체장을 밀어냅니다.</p>
+  </div>
+</section>
+
+<!-- ⑫ DISTORTION LENS -->
+<section id="lensSec">
+  <span class="num-badge">⑫ Distortion Lens</span>
+  <canvas id="lensCanvas"></canvas>
+  <div class="content">
+    <span class="tag">Real-time Refraction</span>
+    <h2>커서가 곧 돋보기입니다 🔍</h2>
+    <p class="lead">커서 주변 픽셀이 실시간으로 굴절·확대됩니다.</p>
+  </div>
+</section>
+
+<!-- ⑬ ELASTIC GRID -->
+<section id="gridSec">
+  <span class="num-badge">⑬ Elastic Grid</span>
+  <canvas id="gridCanvas"></canvas>
+  <div class="content">
+    <span class="tag">Spring Physics</span>
+    <h2>탄성 격자를 밀어보세요</h2>
+    <p class="lead">격자점이 커서에 밀렸다가 스프링처럼 복원됩니다.</p>
+  </div>
+</section>
+
+<!-- ⑭ REPEL TEXT -->
+<section id="repelSec">
+  <span class="num-badge">⑭ Repel Text</span>
+  <canvas id="repelCanvas"></canvas>
+  <div class="content">
+    <span class="tag">Particle Repulsion</span>
+    <h2 style="visibility:hidden">DISPERSE</h2>
+    <p class="lead">글자를 이루는 입자들이 커서를 피해 흩어집니다.</p>
+  </div>
+</section>
+
+<!-- ⑮ GOOEY METABALL -->
+<section id="gooeySec">
+  <span class="num-badge">⑮ Gooey Metaball Cursor</span>
+  <canvas id="gooeyCanvas"></canvas>
+  <div class="content">
+    <span class="tag">Metaball Fusion</span>
+    <h2>액체처럼 융합되는 커서</h2>
+    <p class="lead">커서를 따라오는 방울들이 서로 끈적하게 뭉칩니다.</p>
+  </div>
+</section>
+
+<footer><p>🌊 고급 마우스 인터랙션 5종 · Canvas 물리 시뮬레이션</p></footer>
+
+<script>
+/* 헬퍼: 섹션 로컬 마우스 좌표 */
+function trackMouse(sec){
+  const m={x:-9999,y:-9999,px:-9999,py:-9999,vx:0,vy:0,active:false};
+  sec.addEventListener('mousemove',e=>{
+    const r=sec.getBoundingClientRect();
+    const nx=e.clientX-r.left, ny=e.clientY-r.top;
+    if(m.active){m.vx=nx-m.x;m.vy=ny-m.y;}
+    m.px=m.x;m.py=m.y;m.x=nx;m.y=ny;m.active=true;
+  });
+  sec.addEventListener('mouseleave',()=>{m.active=false;m.x=-9999;m.y=-9999;});
+  return m;
+}
+
+/* ─────────── ⑪ FLUID TRAIL ─────────── */
+(function(){
+  const sec=document.getElementById('fluidSec');
+  const cv=document.getElementById('fluidCanvas');
+  const ctx=cv.getContext('2d');
+  let W,H;const m=trackMouse(sec);
+  const COLS=48,ROWS=28;let field=[];
+  function resize(){W=cv.width=sec.offsetWidth;H=cv.height=sec.offsetHeight;
+    field=[];for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)field.push({vx:0,vy:0,hue:Math.random()*360});}
+  resize();window.addEventListener('resize',resize);
+  function loop(){
+    ctx.fillStyle='rgba(6,7,15,0.12)';ctx.fillRect(0,0,W,H);
+    const cw=W/COLS,ch=H/ROWS;
+    for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){
+      const cell=field[y*COLS+x];
+      const cx=x*cw+cw/2, cy=y*ch+ch/2;
+      const dx=cx-m.x, dy=cy-m.y, dist=Math.hypot(dx,dy);
+      if(m.active&&dist<180){
+        const f=(180-dist)/180;
+        cell.vx+=m.vx*f*0.4; cell.vy+=m.vy*f*0.4;
+        cell.hue=(cell.hue+f*8)%360;
+      }
+      cell.vx*=0.92;cell.vy*=0.92;
+      const speed=Math.hypot(cell.vx,cell.vy);
+      if(speed>0.4){
+        ctx.strokeStyle=`hsla(${cell.hue},80%,60%,${Math.min(speed/8,1)})`;
+        ctx.lineWidth=Math.min(speed*0.6,4);
+        ctx.beginPath();ctx.moveTo(cx,cy);
+        ctx.lineTo(cx+cell.vx*3,cy+cell.vy*3);ctx.stroke();
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+
+/* ─────────── ⑫ DISTORTION LENS ─────────── */
+(function(){
+  const sec=document.getElementById('lensSec');
+  const cv=document.getElementById('lensCanvas');
+  const ctx=cv.getContext('2d');
+  let W,H;const m=trackMouse(sec);
+  // build a colorful source pattern buffer
+  let src;
+  function buildSource(){
+    W=cv.width=sec.offsetWidth;H=cv.height=sec.offsetHeight;
+    const o=document.createElement('canvas');o.width=W;o.height=H;
+    const oc=o.getContext('2d');
+    // gradient bg
+    const g=oc.createLinearGradient(0,0,W,H);
+    g.addColorStop(0,'#1e1b4b');g.addColorStop(.5,'#0f766e');g.addColorStop(1,'#831843');
+    oc.fillStyle=g;oc.fillRect(0,0,W,H);
+    // grid lines + dots
+    oc.strokeStyle='rgba(255,255,255,.12)';oc.lineWidth=1;
+    for(let x=0;x<W;x+=40){oc.beginPath();oc.moveTo(x,0);oc.lineTo(x,H);oc.stroke();}
+    for(let y=0;y<H;y+=40){oc.beginPath();oc.moveTo(0,y);oc.lineTo(W,y);oc.stroke();}
+    const cols=['#a78bfa','#2dd4bf','#f472b6','#fbbf24'];
+    for(let y=20;y<H;y+=40)for(let x=20;x<W;x+=40){
+      oc.fillStyle=cols[(x+y)%cols.length===0?0:((x/40+y/40)|0)%4];
+      oc.beginPath();oc.arc(x,y,4,0,Math.PI*2);oc.fill();
+    }
+    src=oc.getImageData(0,0,W,H);
+  }
+  buildSource();window.addEventListener('resize',buildSource);
+  const R=110,strength=0.45;
+  function loop(){
+    // draw base
+    ctx.putImageData(src,0,0);
+    if(m.active&&m.x>-1000){
+      // sample a square region and re-map with lens distortion
+      const out=ctx.getImageData(Math.max(0,m.x-R),Math.max(0,m.y-R),R*2,R*2);
+      const sd=src.data, od=out.data;
+      const ox=Math.max(0,m.x-R), oy=Math.max(0,m.y-R);
+      const w2=out.width,h2=out.height;
+      for(let j=0;j<h2;j++)for(let i=0;i<w2;i++){
+        const gx=i-(m.x-ox), gy=j-(m.y-oy);
+        const d=Math.hypot(gx,gy);
+        if(d<R){
+          const pct=d/R;
+          const scale=1-strength*(1-pct*pct); // magnify center
+          const sx=Math.round(m.x+gx*scale);
+          const sy=Math.round(m.y+gy*scale);
+          if(sx>=0&&sx<W&&sy>=0&&sy<H){
+            const si=(sy*W+sx)*4, di=(j*w2+i)*4;
+            od[di]=sd[si];od[di+1]=sd[si+1];od[di+2]=sd[si+2];od[di+3]=255;
+          }
+        }
+      }
+      ctx.putImageData(out,ox,oy);
+      // lens rim
+      ctx.beginPath();ctx.arc(m.x,m.y,R,0,Math.PI*2);
+      ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.stroke();
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+
+/* ─────────── ⑬ ELASTIC GRID ─────────── */
+(function(){
+  const sec=document.getElementById('gridSec');
+  const cv=document.getElementById('gridCanvas');
+  const ctx=cv.getContext('2d');
+  let W,H,pts=[],gap=44;const m=trackMouse(sec);
+  function resize(){W=cv.width=sec.offsetWidth;H=cv.height=sec.offsetHeight;
+    pts=[];for(let y=gap/2;y<H;y+=gap)for(let x=gap/2;x<W;x+=gap)
+      pts.push({ox:x,oy:y,x,y,vx:0,vy:0});}
+  resize();window.addEventListener('resize',resize);
+  function loop(){
+    ctx.clearRect(0,0,W,H);
+    pts.forEach(p=>{
+      const dx=p.x-m.x, dy=p.y-m.y, dist=Math.hypot(dx,dy);
+      if(m.active&&dist<130){
+        const f=(130-dist)/130;const ang=Math.atan2(dy,dx);
+        p.vx+=Math.cos(ang)*f*8;p.vy+=Math.sin(ang)*f*8;
+      }
+      // spring back
+      p.vx+=(p.ox-p.x)*0.08;p.vy+=(p.oy-p.y)*0.08;
+      p.vx*=0.86;p.vy*=0.86;p.x+=p.vx;p.y+=p.vy;
+      const disp=Math.hypot(p.x-p.ox,p.y-p.oy);
+      const hue=200+Math.min(disp*3,120);
+      ctx.beginPath();ctx.fillStyle=`hsl(${hue},70%,${55+Math.min(disp,30)}%)`;
+      ctx.arc(p.x,p.y,2+Math.min(disp*0.1,4),0,Math.PI*2);ctx.fill();
+    });
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+
+/* ─────────── ⑭ REPEL TEXT ─────────── */
+(function(){
+  const sec=document.getElementById('repelSec');
+  const cv=document.getElementById('repelCanvas');
+  const ctx=cv.getContext('2d');
+  let W,H,parts=[];const m=trackMouse(sec);
+  function build(){
+    W=cv.width=sec.offsetWidth;H=cv.height=sec.offsetHeight;
+    const o=document.createElement('canvas');o.width=W;o.height=H;
+    const oc=o.getContext('2d');
+    const fs=Math.min(W*0.16,150);
+    oc.fillStyle='#fff';oc.font=`900 ${fs}px 'Segoe UI',sans-serif`;
+    oc.textAlign='center';oc.textBaseline='middle';
+    oc.fillText('REPEL',W/2,H*0.42);
+    const d=oc.getImageData(0,0,W,H).data;
+    parts=[];const step=Math.max(4,Math.floor(W/160));
+    for(let y=0;y<H;y+=step)for(let x=0;x<W;x+=step){
+      if(d[(y*W+x)*4+3]>128)parts.push({ox:x,oy:y,x,y,vx:0,vy:0,
+        color:`hsl(${(x/W*160+180)},80%,65%)`});
+    }
+  }
+  build();window.addEventListener('resize',build);
+  function loop(){
+    ctx.clearRect(0,0,W,H);
+    parts.forEach(p=>{
+      const dx=p.x-m.x, dy=p.y-m.y, dist=Math.hypot(dx,dy);
+      if(m.active&&dist<110){
+        const f=(110-dist)/110;const ang=Math.atan2(dy,dx);
+        p.vx+=Math.cos(ang)*f*6;p.vy+=Math.sin(ang)*f*6;
+      }
+      p.vx+=(p.ox-p.x)*0.06;p.vy+=(p.oy-p.y)*0.06;
+      p.vx*=0.88;p.vy*=0.88;p.x+=p.vx;p.y+=p.vy;
+      ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,2.2,2.2);
+    });
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+
+/* ─────────── ⑮ GOOEY METABALL ─────────── */
+(function(){
+  const sec=document.getElementById('gooeySec');
+  const cv=document.getElementById('gooeyCanvas');
+  const ctx=cv.getContext('2d');
+  let W,H;const m=trackMouse(sec);
+  let blobs=[];
+  function resize(){W=cv.width=sec.offsetWidth;H=cv.height=sec.offsetHeight;
+    m.x=W/2;m.y=H/2;
+    blobs=[];for(let i=0;i<7;i++)blobs.push({x:W/2,y:H/2,r:26-i*2.2});}
+  resize();window.addEventListener('resize',resize);
+  // metaball via threshold on an offscreen buffer
+  const off=document.createElement('canvas');const oc=off.getContext('2d');
+  function loop(){
+    off.width=W;off.height=H;
+    oc.clearRect(0,0,W,H);
+    // chain follow
+    let tx=m.active?m.x:W/2, ty=m.active?m.y:H/2;
+    blobs.forEach((b,i)=>{
+      b.x+=(tx-b.x)*(0.35-i*0.02);b.y+=(ty-b.y)*(0.35-i*0.02);
+      tx=b.x;ty=b.y;
+      const g=oc.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r*2.2);
+      g.addColorStop(0,'rgba(45,212,191,1)');
+      g.addColorStop(1,'rgba(45,212,191,0)');
+      oc.fillStyle=g;oc.beginPath();oc.arc(b.x,b.y,b.r*2.2,0,Math.PI*2);oc.fill();
+    });
+    // threshold to get gooey edges
+    const img=oc.getImageData(0,0,W,H);const dt=img.data;
+    for(let i=0;i<dt.length;i+=4){
+      const a=dt[i+3];
+      if(a>160){
+        dt[i+3]=255;
+        // color gradient by position
+        const px=(i/4)%W;
+        dt[i]=120+px/W*80;dt[i+1]=200;dt[i+2]=230;
+      }else dt[i+3]=0;
+    }
+    ctx.clearRect(0,0,W,H);
+    ctx.putImageData(img,0,0);
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>
